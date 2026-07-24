@@ -1,0 +1,2 @@
+# Ignore real config files (contain tokens)
+*.conf

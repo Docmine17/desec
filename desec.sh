@@ -5,6 +5,7 @@
 # ==============================================================================
 CHECK_INTERVAL=20
 CONFIG_DIR=""
+RUNNING=true
 
 # ==============================================================================
 # Functions
@@ -15,36 +16,68 @@ log() {
 }
 
 usage() {
-    echo "Usage: $0 [--zone /path/to/zones/]"
-    echo "  --zone: Directory containing .conf files for each zone."
-    echo "          Default: <script_dir>/zones/"
+    echo "Usage: $0 [--zone /path/to/zones/] [--interval SECONDS]"
+    echo "  --zone:     Directory containing .conf files for each zone."
+    echo "              Default: <script_dir>/zones/"
+    echo "  --interval: Check interval in seconds (default: $CHECK_INTERVAL)."
     exit 1
 }
+
+parse_config() {
+    local file=$1
+    TOKEN=""
+    INTERFACE=""
+
+    while IFS='=' read -r key value; do
+        # Skip empty lines and comments
+        [[ -z "$key" || "$key" =~ ^[[:space:]]*# ]] && continue
+
+        # Strip surrounding quotes and whitespace
+        key=$(echo "$key" | xargs)
+        value=$(echo "$value" | sed 's/^["'\''"]*//;s/["'\''"]*$//' | xargs)
+
+        case "$key" in
+            TOKEN)     TOKEN="$value" ;;
+            INTERFACE) INTERFACE="$value" ;;
+            *)         log "Warning: Unknown key '$key' in $file" ;;
+        esac
+    done < "$file"
+}
+
+cleanup() {
+    log "Signal received. Shutting down gracefully..."
+    RUNNING=false
+    # Kill background sleep if running
+    [[ -n "$SLEEP_PID" ]] && kill "$SLEEP_PID" 2>/dev/null
+}
+
+trap cleanup SIGTERM SIGINT
 
 update_ip() {
     local ZONE=$1
     local TOKEN=$2
     
-    # Check basic connectivity before trying to update
-    if ping -6 -c 1 -W 1 update6.dedyn.io >/dev/null 2>&1; then
-        log "[$ZONE] Connectivity OK. Sending update..."
-        
-        # deSEC Update API
-        response=$(curl -s -w "%{http_code}" \
-            -H "Authorization: Token $TOKEN" \
-            "https://update6.dedyn.io/?hostname=$ZONE")
-        
-        http_code=${response: -3}
-        
-        if [[ "$http_code" =~ 20[01] ]]; then
-            log "[$ZONE] Success: Address updated (HTTP $http_code)."
-            return 0
-        else
-            log "[$ZONE] Error: Update failed (HTTP $http_code). Response: ${response:0:-3}"
-            return 1
-        fi
+    log "[$ZONE] Sending update..."
+    
+    # deSEC Update API (--connect-timeout handles unreachable server)
+    response=$(curl -s -w "%{http_code}" --connect-timeout 10 -m 30 \
+        -H "Authorization: Token $TOKEN" \
+        "https://update6.dedyn.io/?hostname=$ZONE")
+    
+    local curl_exit=$?
+    
+    if [ $curl_exit -ne 0 ]; then
+        log "[$ZONE] Error: Connection to deSEC failed (curl exit: $curl_exit)."
+        return 1
+    fi
+    
+    http_code=${response: -3}
+    
+    if [[ "$http_code" =~ 20[01] ]]; then
+        log "[$ZONE] Success: Address updated (HTTP $http_code)."
+        return 0
     else
-        log "[$ZONE] Error: Connection to deSEC failed."
+        log "[$ZONE] Error: Update failed (HTTP $http_code). Response: ${response:0:-3}"
         return 1
     fi
 }
@@ -56,6 +89,7 @@ update_ip() {
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --zone) CONFIG_DIR="$2"; shift ;;
+        --interval) CHECK_INTERVAL="$2"; shift ;;
         -h|--help) usage ;;
         *) echo "Unknown parameter: $1"; usage ;;
     esac
@@ -82,16 +116,14 @@ log "Starting deSEC multi-zone script. Config dir: $CONFIG_DIR"
 # State management for IP per interface (simplified for multi-zone)
 declare -A previous_ips
 
-while true; do
+while $RUNNING; do
   for zone_conf in "$CONFIG_DIR"/*.conf; do
+    $RUNNING || break
     [ -e "$zone_conf" ] || { log "No .conf files found in $CONFIG_DIR"; break; }
     
-    # Load zone configuration
+    # Load zone configuration (safe parsing, no source)
     ZONE_NAME=$(basename "$zone_conf" .conf)
-    INTERFACE=""
-    TOKEN=""
-    
-    source "$zone_conf"
+    parse_config "$zone_conf"
     
     # Validation
     if [ -z "$TOKEN" ] || [ -z "$INTERFACE" ]; then
@@ -109,11 +141,19 @@ while true; do
             if update_ip "$ZONE_NAME" "$TOKEN"; then
                 previous_ips[$ZONE_NAME]="$current_ip"
             fi
+            # Rate limiting: avoid flooding the deSEC API
+            sleep 1
         fi
     else
         log "[$ZONE_NAME] Warning: No valid IP found on interface $INTERFACE."
     fi
   done
   
-  sleep "$CHECK_INTERVAL"
+  # Interruptible sleep: allows immediate response to signals
+  sleep "$CHECK_INTERVAL" &
+  SLEEP_PID=$!
+  wait "$SLEEP_PID" 2>/dev/null
+  SLEEP_PID=""
 done
+
+log "Stopped."

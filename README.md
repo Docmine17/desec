@@ -1,80 +1,120 @@
-# deSEC Dynamic DNS Client (Multi-Zone)
+# deSEC Dynamic DNS Client
 
-A lightweight Bash script to update deSEC dynamic DNS records (IPv6) for multiple zones. This script monitors your network interfaces for IP changes and automatically updates your deSEC records when a new dynamic IP is assigned.
+A lightweight Bash client for updating [deSEC](https://desec.io/) dynamic DNS records. Supports multiple zones with independent configuration and automatic IPv6 address change detection.
+
+> **Note:** This client is **IPv6-only**. It monitors dynamic IPv6 addresses on specified network interfaces and updates records via `update6.dedyn.io`. IPv4 is not supported.
 
 ## Features
 
-- **Multi-Zone Support**: Manage multiple domains/hostnames easily.
-- **Independent Configuration**: Each zone has its own configuration file.
-- **IP Change Detection**: Tracks IP history per zone/hostname to minimize unnecessary API calls, even when multiple zones share the same interface.
-- **Systemd Integration**: Includes a service template for background operation.
-- **Clean & Simple**: Native Bash with minimal dependencies (`curl`, `iproute2`).
+- **Multi-zone support** — manage multiple domains, each with its own configuration file.
+- **IP change detection** — tracks addresses per zone to avoid unnecessary API calls.
+- **Safe configuration** — config files are parsed without shell evaluation; only expected keys are accepted.
+- **Graceful shutdown** — handles `SIGTERM` and `SIGINT` for clean service termination.
+- **Rate limiting** — spaces API calls between zones to respect deSEC rate limits.
+- **Systemd integration** — includes a service unit for background operation.
+
+## Requirements
+
+- Bash 4.0+
+- `curl`
+- `iproute2`
 
 ## Installation
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Docmine17/desec.git
-   cd desec
-   ```
-
-2. **Set up permissions**:
-   ```bash
-   chmod +x desec.sh
-   ```
+```bash
+git clone https://github.com/Docmine17/desec.git
+cd desec
+chmod +x desec.sh
+```
 
 ## Configuration
 
-The script looks for `.conf` files in the `zones/` directory by default.
+Zone configuration files are stored in the `zones/` directory. Each file defines a single zone and must use the `.conf` extension.
 
-1. **Create the zones directory**:
-   ```bash
-   mkdir -p zones
-   ```
+### Creating a zone
 
-2. **Add a configuration for each zone**:
-   Create a file inside `zones/` (e.g., `myhome.dedyn.io.conf`):
-   ```bash
-   TOKEN="your_desec_token_here"
-   INTERFACE="eth0"
-   ```
-   *Replace `eth0` with your actual network interface (use `ip addr` to find it).*
+Copy the provided sample and edit it:
+
+```bash
+cp zones/domain.dedyn.io.sample zones/yourdomain.dedyn.io.conf
+```
+
+Each `.conf` file accepts two keys:
+
+| Key         | Description                          |
+|-------------|--------------------------------------|
+| `TOKEN`     | Your deSEC API token.                |
+| `INTERFACE` | Network interface to monitor.        |
+
+Example (`zones/yourdomain.dedyn.io.conf`):
+
+```
+TOKEN="your_desec_token_here"
+INTERFACE="eth0"
+```
+
+Use `ip -6 addr` to identify the correct interface.
 
 ## Usage
 
-### Run Manually
+### Manual execution
+
 ```bash
 ./desec.sh
 ```
 
-### Specifying a Custom Config Directory
+### Options
+
+| Option       | Description                                        | Default              |
+|--------------|----------------------------------------------------|----------------------|
+| `--zone`     | Path to the directory containing `.conf` files.    | `<script_dir>/zones` |
+| `--interval` | Check interval in seconds.                         | `20`                 |
+| `-h, --help` | Show usage information.                            | —                    |
+
+Examples:
+
 ```bash
-./desec.sh --zone /path/to/your/configs/
+# Custom config directory
+./desec.sh --zone /etc/desec/zones/
+
+# Check every 60 seconds
+./desec.sh --interval 60
+
+# Both options combined
+./desec.sh --zone /etc/desec/zones/ --interval 60
 ```
 
-## Running as a Service (Systemd)
+### Running as a systemd service
 
-To keep the script running in the background:
+1. Edit `desec-dns.service` and set the correct path in `ExecStart`:
 
-1. **Edit the service file**:
-   Open `desec-dns.service` and update `ExecStart` with the absolute path to your script:
    ```ini
-   ExecStart=/bin/bash /home/youruser/scripts/desec/desec.sh
+   ExecStart=/bin/bash /path/to/desec.sh
    ```
 
-2. **Install the service**:
+2. Install and enable the service:
+
    ```bash
    sudo cp desec-dns.service /etc/systemd/system/
    sudo systemctl daemon-reload
-   sudo systemctl enable desec-dns.service
-   sudo systemctl start desec-dns.service
+   sudo systemctl enable --now desec-dns.service
    ```
 
-3. **Check status**:
+3. Check status:
+
    ```bash
-   sudo systemctl status desec-dns.service
+   systemctl status desec-dns.service
    ```
+
+## How it works
+
+1. The script loads all `.conf` files from the configured zones directory.
+2. For each zone, it reads the current dynamic IPv6 address from the specified interface.
+3. If the address differs from the previously recorded one, it sends an update to the deSEC API.
+4. The process repeats at the configured interval.
+
+On receiving `SIGTERM` or `SIGINT`, the script logs the event and exits cleanly.
 
 ## License
 
-MIT License
+[MIT](LICENSE)
