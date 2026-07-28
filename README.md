@@ -17,7 +17,6 @@ A lightweight Bash client for updating [deSEC](https://desec.io/) dynamic DNS re
 
 - Bash 4.0+
 - `curl`
-- `iproute2`
 
 ## Installation
 
