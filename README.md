@@ -38,18 +38,21 @@ Copy the provided sample and edit it:
 cp zones/domain.dedyn.io.sample zones/yourdomain.dedyn.io.conf
 ```
 
-Each `.conf` file accepts two keys:
+Each `.conf` file specifies the network interface, API token, and an optional IP selection mode on a single line separated by spaces:
 
-| Key         | Description                          |
-|-------------|--------------------------------------|
-| `TOKEN`     | Your deSEC API token.                |
-| `INTERFACE` | Network interface to monitor.        |
+```text
+INTERFACE TOKEN [IP_TYPE]
+```
+
+Supported `IP_TYPE` values:
+- `any` *(default)*: Uses any valid global IPv6 address available on the interface.
+- `stable`: Uses only stable SLAAC (`00`) or static (`80`) addresses.
+- `temporary`: Uses only dynamic privacy extension addresses (`01`).
 
 Example (`zones/yourdomain.dedyn.io.conf`):
 
-```
-TOKEN="your_desec_token_here"
-INTERFACE="eth0"
+```text
+eth0 your_desec_token_here stable
 ```
 
 Use `ip -6 addr` to identify the correct interface.

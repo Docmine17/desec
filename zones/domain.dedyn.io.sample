@@ -1,2 +1,3 @@
-TOKEN="mock_token_1"
-INTERFACE="lo"
+# Format: INTERFACE TOKEN [IP_TYPE]
+# IP_TYPE options: any (default), stable, temporary
+lo mock_token_1 stable
