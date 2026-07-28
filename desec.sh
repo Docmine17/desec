@@ -35,12 +35,13 @@ parse_config() {
 update_ip() {
     local ZONE=$1
     local TOKEN=$2
+    local IP=$3
 
-    log "[$ZONE] Sending update..."
+    log "[$ZONE] Sending update ($IP)..."
 
     response=$(curl -s -w "%{http_code}" --connect-timeout 10 -m 30 \
         -H "Authorization: Token $TOKEN" \
-        "https://update6.dedyn.io/?hostname=$ZONE")
+        "https://update6.dedyn.io/?hostname=$ZONE&myip=$IP")
 
     local curl_exit=$?
 
@@ -136,7 +137,7 @@ while $RUNNING; do
         if [ -n "$current_ip" ]; then
             if [ "$current_ip" != "${previous_ips[$ZONE_NAME]}" ]; then
                 log "[$ZONE_NAME] IP change detected on $INTERFACE ($current_ip). Updating..."
-                update_ip "$ZONE_NAME" "$TOKEN"
+                update_ip "$ZONE_NAME" "$TOKEN" "$current_ip"
                 update_res=$?
                 if [ $update_res -eq 0 ]; then
                     previous_ips[$ZONE_NAME]="$current_ip"
