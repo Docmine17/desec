@@ -9,8 +9,6 @@ A lightweight Bash client for updating [deSEC](https://desec.io/) dynamic DNS re
 - **Multi-zone support** — manage multiple domains, each with its own configuration file.
 - **IP change detection** — tracks addresses per zone to avoid unnecessary API calls.
 - **Safe configuration** — config files are parsed without shell evaluation; only expected keys are accepted.
-- **Graceful shutdown** — handles `SIGTERM` and `SIGINT` for clean service termination.
-- **Rate limiting** — spaces API calls between zones to respect deSEC rate limits.
 - **Systemd integration** — includes a service unit for background operation.
 
 ## Requirements
@@ -28,7 +26,7 @@ chmod +x desec.sh
 
 ## Configuration
 
-Zone configuration files are stored in the `zones/` directory. Each file defines a single zone and must use the `.conf` extension.
+Zone configuration files are stored in the `zones/` directory. Each file defines a single zone and must use your subdomain + dedyn.io`.conf` extension.
 
 ### Creating a zone
 
